@@ -1,62 +1,34 @@
 import UIKit
 
-final class MovieQuizViewController: UIViewController, QuestionFactoryDelegate, AlertPresenterDelegate {
+final class MovieQuizViewController: UIViewController,MovieQuizViewControllerProtocol{
     
-    private var currentQuestionIndex: Int = 0
-    private var correctAnswers: Int = 0
-    private let questionsAmount:Int = 10
+    private var presenter:MovieQuizPresenter!
     
-    private var questionFactory:QuestionFactoryProtocol?
-    private var currentQuestion:QuizQuestion?
-    private var alertPresenter:AlertPresenterProtocol?
-    private var statisticService:StatisticService?
+    @IBOutlet private var activityIndicator: UIActivityIndicatorView!
     
     
+    @IBAction private func noBottonClicked(_ sender: UIButton) {
+        presenter.noBottonClicked()
+    }
+    @IBAction private func yesButtonClicked(_ sender: UIButton) {
+        presenter.yesButtonClicked()
+    }
+    
+    
+    @IBOutlet private var textLabel: UILabel!
+    @IBOutlet private var imageView: UIImageView!
+    @IBOutlet private var counterLabel: UILabel!
+    @IBOutlet private var noButton: UIButton!
+    @IBOutlet private var yesButton: UIButton!
     
     
     override var preferredStatusBarStyle:UIStatusBarStyle {
         return.lightContent
     }
     
-    @IBAction private func noBottonClicked(_ sender: UIButton) {
-        guard let currentQuestion = currentQuestion else {
-            return
-        }
-        let givenAnswer = false
-        
-        showAnswerResult(isCorrect: givenAnswer == currentQuestion.correctAnswer)
-    }
+    // MARK: - Private functions
     
-    
-    @IBAction private func yesButtonClicked(_ sender: UIButton) {
-        guard let currentQuestion = currentQuestion else {
-            return
-        }
-        let givenAnswer = true
-        
-        showAnswerResult(isCorrect: givenAnswer == currentQuestion.correctAnswer)
-    }
-    
-    
-    
-    
-    @IBOutlet private var textLabel: UILabel!
-    @IBOutlet private var imageView: UIImageView!
-    
-    @IBOutlet private var counterLabel: UILabel!
-    
-    
-    
-    
-    
-    private func convert(model: QuizQuestion) -> QuizStepViewModel {
-        return QuizStepViewModel(
-            image: UIImage(named:model.image) ?? UIImage(),
-            question: model.text,
-            questionNumber:"\(currentQuestionIndex + 1)/\(questionsAmount)")
-    }
-    
-    private func show(quiz step: QuizStepViewModel) {
+    func show(quiz step: QuizStepViewModel) {
         imageView.image = step.image
         imageView.layer.borderWidth = 0
         counterLabel.text = step.questionNumber
@@ -64,66 +36,58 @@ final class MovieQuizViewController: UIViewController, QuestionFactoryDelegate, 
         imageView.layer.cornerRadius = 20
     }
     
-    private func show(quiz model:AlertModel) {
-        alertPresenter?.showAlert(model:model)
-    }
     
-    private func show(quiz result: QuizResultsViewModel) {
+   func show(quiz result: QuizResultsViewModel) {
+        
+        let message = presenter.makeResultsMessage()
+        
         let alert = UIAlertController(
             title: result.title,
-            message: result.text,
+            message: message,
             preferredStyle: .alert)
         
-        let action = UIAlertAction(title: result.buttonText, style: .default) { [weak self]_ in
-            guard let self = self else {return}
-            
-            
-            self.currentQuestionIndex = 0
-            self.correctAnswers = 0
-            self.questionFactory?.requestNextQuestion()
-        }
         
+        let action = UIAlertAction(title: result.buttonText, style: .default) { [weak self] _ in
+            guard let self = self else { return }
+            
+            self.presenter.restartGame()
+        }
         
         alert.addAction(action)
         self.present(alert, animated: true, completion: nil)
     }
     
-    
-    
-    private func showNextQuestionOrResults() {
-        
-        imageView.layer.borderWidth = 0
-        
-        if currentQuestionIndex == questionsAmount - 1 {
-            showFinalResults()
-        } else {
-            currentQuestionIndex += 1
-            questionFactory?.requestNextQuestion()
-        }
+    func highlightImageBorder(isCorrectAnswer: Bool) {
+        imageView.layer.masksToBounds = true
+        imageView.layer.borderWidth = 8
+        imageView.layer.borderColor = isCorrectAnswer ? UIColor.ypGreen.cgColor : UIColor.ypRed.cgColor
     }
     
+    func showLoadingIndicator(){
+        activityIndicator.isHidden = false
+        activityIndicator.startAnimating()
+    }
     
-    
-    
-    private func showAnswerResult(isCorrect: Bool) {
+    func hideLoadingIndicator() {
+        activityIndicator.isHidden = true
         
-        if isCorrect {
-            correctAnswers += 1
-            imageView.layer.masksToBounds = true
-            imageView.layer.borderWidth = 8
-            imageView.layer.borderColor = UIColor.ypGreen.cgColor
-            imageView.layer.cornerRadius = 20
+    }
+    
+   func showNetworkError(message: String) {
+       hideLoadingIndicator()
+
+       let alert = UIAlertController(
+            title: "Ошибка",
+            message: message,
+            preferredStyle: .alert)
+        
+        let action = UIAlertAction(title: "Попробовать еще раз",
+                                   style: .default) { [weak self] _ in
+            guard let self = self else { return }
+            
+            self.presenter.restartGame()
         }
-        else {
-            imageView.layer.masksToBounds = true
-            imageView.layer.borderWidth = 8
-            imageView.layer.borderColor = UIColor.ypRed.cgColor
-            imageView.layer.cornerRadius = 20
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self]
-            in guard let self = self else {return}
-            self.showNextQuestionOrResults()
-        }
+        alert.addAction(action)
     }
     
     
@@ -133,55 +97,13 @@ final class MovieQuizViewController: UIViewController, QuestionFactoryDelegate, 
     override func viewDidLoad() {
         super.viewDidLoad()
         
+        presenter = MovieQuizPresenter(viewController: self)
+        
         imageView.layer.cornerRadius = 20
-        
-        statisticService = StatisticServiceImplementation(userDefaults: UserDefaults.standard,
-                                                          decoder: JSONDecoder(),
-                                                          encoder: JSONEncoder())
-
-        questionFactory = QuestionFactory(delegate: self)
-        questionFactory?.requestNextQuestion()
-        alertPresenter = AlertPresenter(delegate: self)
     }
-    
-    // MARK: - QuestionFactoryDelegate
-    func didReceiveNextQuestion(question: QuizQuestion?) {
-        guard let question = question else {
-            return
-        }
-        
-        currentQuestion = question
-        let viewModel = convert(model: question)
-        DispatchQueue.main.async { [weak self] in
-            self?.show(quiz: viewModel)
-        }
-    }
-    
-    private func showFinalResults() {
-        statisticService?.store(correct: correctAnswers, total: questionsAmount)
-        
-        guard let statisticService = statisticService else {
-            return ()
-        }
-        guard let bestGame = statisticService.bestGame else {
-            return()
-        }
-        
-        let text = "Ваш результат: \(correctAnswers)/10 Количество сыгранных раундов: \(statisticService.gamesCount) Рекорд: \(bestGame.correct)/10 (\(Date())) Средняя точность: \(String(format: "%.2f", statisticService.totalAccuracy))% "
-        
-        let alertModel = AlertModel(
-            title: "Этот раунд окончен!",
-            message: text,
-            buttonText: "Сыграть ещё раз") { [weak self] in
-                self?.currentQuestionIndex = 0
-                self?.correctAnswers = 0
-                self?.questionFactory?.requestNextQuestion()
-            }
-        self.alertPresenter?.showAlert(model: alertModel)
-    }
-    
-    
 }
+
+
 
 
 

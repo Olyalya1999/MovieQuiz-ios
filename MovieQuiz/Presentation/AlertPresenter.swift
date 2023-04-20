@@ -8,15 +8,18 @@
 import Foundation
 import UIKit
 
-class AlertPresenter:AlertPresenterProtocol
+final class AlertPresenter:AlertPresenterProtocol
 {
     private weak var delegate: AlertPresenterDelegate?
+    
+    
     init(delegate: AlertPresenterDelegate?)
     {
         self.delegate = delegate
     }
     
     func showAlert(model: AlertModel) {
+
         let alert = UIAlertController(
             title: model.title,
             message: model.message,
@@ -24,6 +27,8 @@ class AlertPresenter:AlertPresenterProtocol
         let action = UIAlertAction(title: model.buttonText, style: .default) { _ in
             model.completion?()
         }
+        
+        alert.view.accessibilityIdentifier = "Game results"
         alert.addAction(action)
         delegate?.present(alert, animated: true, completion: nil)
     }
