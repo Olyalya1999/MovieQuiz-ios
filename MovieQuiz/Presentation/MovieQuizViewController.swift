@@ -70,7 +70,6 @@ final class MovieQuizViewController: UIViewController,MovieQuizViewControllerPro
     
     func hideLoadingIndicator() {
         activityIndicator.isHidden = true
-        
     }
     
    func showNetworkError(message: String) {
